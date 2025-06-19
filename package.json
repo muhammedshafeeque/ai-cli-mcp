@@ -1,0 +1,24 @@
+{
+  "name": "mcp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "commander": "^11.0.0",
+    "dotenv": "^16.5.0",
+    "puppeteer": "^24.10.2",
+    "chalk": "^5.3.0"
+  },
+  "bin": {
+    "mcp-cli": "./index.js",
+    "ai": "./index.js"
+  }
+}
