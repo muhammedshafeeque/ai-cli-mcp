@@ -373,10 +373,18 @@ program
       systemPrompt = systemPrompt.replace('single Linux shell command', 'multiple Linux shell commands separated by newlines. Each command should be on its own line. For complex tasks, break them into steps. Use command substitution $(command) or variables to pass data between commands. Consider using multiple tools if needed.');
     }
     
+    // Add specific instructions for network scanning
+    if (userInstruction.toLowerCase().includes('network') || userInstruction.toLowerCase().includes('scan')) {
+      systemPrompt += '\n\nNETWORK SCANNING: For network scanning, use commands like:\n- nmap -sn 192.168.1.0/24 (ping scan)\n- arp-scan --localnet (ARP scan)\n- netdiscover -r 192.168.1.0/24 (network discovery)\nAvoid complex regex patterns. Use simple grep/awk for parsing.';
+    }
+    
     // Add format instructions
     if (userIntent.format !== 'default') {
       systemPrompt += `\n\nIMPORTANT: Format the output as ${userIntent.format.toUpperCase()}. Use appropriate tools like jq for JSON, column for tables, or sed/awk for clean formatting.`;
     }
+    
+    // Add human-readable formatting instructions
+    systemPrompt += '\n\nOUTPUT FORMATTING: Always generate commands that produce human-readable output. Use tools like:\n- column -t (for table formatting)\n- sed/awk (for clean text processing)\n- sort | uniq (for unique results)\n- head/tail (for limiting output)';
     
     // Add tool suggestions
     if (userIntent.tools.length > 0) {
@@ -467,7 +475,44 @@ program
         } else {
           // Format output based on user intent
           const formattedOutput = formatOutput(stdout, userIntent.format);
-          console.log(chalk.cyan('Command output:'), chalk.green(formattedOutput));
+          
+          // Check if output looks like a list and format as table
+          const lines = stdout.trim().split('\n').filter(line => line.trim());
+          if (lines.length > 1 && (userInstruction.toLowerCase().includes('network') || userInstruction.toLowerCase().includes('scan') || userInstruction.toLowerCase().includes('list'))) {
+            console.log(chalk.cyan('Command output:'));
+            // Try to format as table if it looks like structured data
+            if (lines[0].includes(' ') && lines.length > 2) {
+              try {
+                const tableData = lines.map((line, index) => {
+                  const parts = line.trim().split(/\s+/);
+                  if (index === 0) {
+                    // Header row
+                    return parts.reduce((obj, part, i) => {
+                      obj[`col${i}`] = part;
+                      return obj;
+                    }, {});
+                  } else {
+                    // Data row
+                    return parts.reduce((obj, part, i) => {
+                      obj[`col${i}`] = part;
+                      return obj;
+                    }, {});
+                  }
+                });
+                console.table(tableData);
+              } catch (e) {
+                console.log(chalk.green(formattedOutput));
+              }
+            } else {
+              // Simple list format
+              console.log(chalk.green('📋 Results:'));
+              lines.forEach((line, index) => {
+                console.log(chalk.green(`${index + 1}. ${line.trim()}`));
+              });
+            }
+          } else {
+            console.log(chalk.cyan('Command output:'), chalk.green(formattedOutput));
+          }
           
           // Additional intelligent processing
           if (userIntent.format === 'json' && stdout.trim()) {
@@ -475,6 +520,9 @@ program
           }
           if (userIntent.format === 'table' && stdout.includes(' ')) {
             console.log(chalk.blue('💡 Tip: Use column -t for better table formatting'));
+          }
+          if (lines.length > 5) {
+            console.log(chalk.blue(`💡 Found ${lines.length} results. Use 'head -10' or 'tail -10' to limit output.`));
           }
         }
       });
