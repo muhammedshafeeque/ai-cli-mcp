@@ -20,6 +20,173 @@ function formatMCPPrompt(system, user) {
   ];
 }
 
+// Helper: Smart output formatting
+function formatOutput(output, format = 'default') {
+  switch (format) {
+    case 'json':
+      try {
+        return JSON.stringify(JSON.parse(output), null, 2);
+      } catch {
+        return output;
+      }
+    case 'table':
+      // Convert space-separated output to table format
+      const lines = output.trim().split('\n');
+      if (lines.length > 1) {
+        const headers = lines[0].split(/\s+/);
+        const data = lines.slice(1).map(line => line.split(/\s+/));
+        return data.map(row => 
+          headers.map((header, i) => `${header}: ${row[i] || ''}`).join(' | ')
+        ).join('\n');
+      }
+      return output;
+    case 'list':
+      return output.trim().split('\n').map((line, i) => `${i + 1}. ${line}`).join('\n');
+    case 'clean':
+      return output.replace(/\s+/g, ' ').trim();
+    default:
+      return output;
+  }
+}
+
+// Helper: Intelligent tool selection
+function selectBestTool(task, context = '') {
+  const toolMap = {
+    'network_scan': ['nmap', 'arp-scan', 'netdiscover', 'masscan'],
+    'port_scan': ['nmap', 'masscan', 'rustscan'],
+    'web_scan': ['nikto', 'dirb', 'gobuster', 'ffuf', 'wfuzz'],
+    'vulnerability_scan': ['nmap', 'nikto', 'sqlmap', 'xsstrike'],
+    'password_crack': ['john', 'hashcat', 'hydra', 'medusa'],
+    'file_analysis': ['file', 'strings', 'hexdump', 'binwalk'],
+    'process_analysis': ['ps', 'top', 'htop', 'lsof', 'netstat'],
+    'system_info': ['uname', 'lscpu', 'free', 'df', 'uptime'],
+    'text_processing': ['grep', 'sed', 'awk', 'cut', 'sort', 'uniq'],
+    'file_operations': ['ls', 'find', 'locate', 'which', 'whereis']
+  };
+
+  const taskLower = task.toLowerCase();
+  for (const [category, tools] of Object.entries(toolMap)) {
+    if (taskLower.includes(category.replace('_', ' ')) || 
+        tools.some(tool => taskLower.includes(tool))) {
+      return tools;
+    }
+  }
+  return ['ls']; // default fallback
+}
+
+// Helper: Parse user intent
+function parseUserIntent(instruction) {
+  const intent = {
+    action: '',
+    target: '',
+    format: 'default',
+    tools: [],
+    isComplex: false
+  };
+
+  const instructionLower = instruction.toLowerCase();
+  
+  // Detect format preferences
+  if (instructionLower.includes('json') || instructionLower.includes('format json')) {
+    intent.format = 'json';
+  } else if (instructionLower.includes('table') || instructionLower.includes('formatted')) {
+    intent.format = 'table';
+  } else if (instructionLower.includes('list') || instructionLower.includes('numbered')) {
+    intent.format = 'list';
+  } else if (instructionLower.includes('clean') || instructionLower.includes('simple')) {
+    intent.format = 'clean';
+  }
+
+  // Detect complex tasks
+  intent.isComplex = instructionLower.includes('and') || 
+                     instructionLower.includes('then') ||
+                     instructionLower.includes('also') ||
+                     instructionLower.includes('multiple') ||
+                     instructionLower.includes('both');
+
+  // Detect tools needed
+  if (instructionLower.includes('network') || instructionLower.includes('scan')) {
+    intent.tools.push('network_scan');
+  }
+  if (instructionLower.includes('web') || instructionLower.includes('http')) {
+    intent.tools.push('web_scan');
+  }
+  if (instructionLower.includes('vulnerability') || instructionLower.includes('security')) {
+    intent.tools.push('vulnerability_scan');
+  }
+
+  return intent;
+}
+
+// Consolidated fallback commands array
+const FALLBACK_COMMANDS = [
+  // File and directory operations
+  'ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'ln', 'ln -s', 'file', 'stat', 'wc', 'sort', 'uniq', 'cut', 'paste', 'join', 'split', 'tr', 'sed', 'awk',
+  // Text processing
+  'grep', 'egrep', 'fgrep', 'head', 'tail', 'less', 'more', 'nano', 'vim', 'vi', 'gedit', 'emacs', 'tee', 'column', 'fmt', 'fold', 'nl', 'pr', 'rev', 'tac',
+  // System information
+  'ps', 'top', 'htop', 'free', 'df', 'du', 'uptime', 'who', 'whoami', 'w', 'id', 'groups', 'uname', 'hostname', 'hostnamectl', 'lscpu', 'lsmem', 'lshw', 'dmidecode', 'lspci', 'lsusb',
+  // Process management
+  'kill', 'killall', 'pkill', 'pgrep', 'nice', 'renice', 'nohup', 'screen', 'tmux', 'jobs', 'bg', 'fg', 'wait', 'timeout',
+  // Network tools
+  'curl', 'wget', 'ping', 'traceroute', 'mtr', 'netstat', 'ss', 'ip', 'ifconfig', 'route', 'arp', 'dig', 'nslookup', 'host', 'whois', 'telnet', 'nc', 'netcat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp',
+  // Package management
+  'apt', 'apt-get', 'apt-cache', 'dpkg', 'rpm', 'yum', 'dnf', 'pacman', 'zypper', 'snap', 'flatpak', 'brew',
+  // Compression and archiving
+  'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', 'xz', 'unxz', '7z', 'rar', 'unrar',
+  // File permissions and ownership
+  'chmod', 'chown', 'chgrp', 'umask', 'su', 'sudo', 'passwd', 'useradd', 'userdel', 'usermod', 'groupadd', 'groupdel', 'groupmod',
+  // Disk and filesystem
+  'mount', 'umount', 'fdisk', 'parted', 'mkfs', 'fsck', 'blkid', 'lsblk', 'findmnt', 'swapon', 'swapoff',
+  // System services
+  'systemctl', 'service', 'init', 'systemd', 'journalctl', 'logrotate', 'cron', 'crontab', 'at', 'batch',
+  // Hardware and devices
+  'lspci', 'lsusb', 'lsmod', 'modprobe', 'insmod', 'rmmod', 'dmesg', 'udevadm', 'lshw', 'inxi', 'sensors', 'smartctl',
+  // Text and data processing
+  'awk', 'sed', 'grep', 'cut', 'paste', 'join', 'sort', 'uniq', 'comm', 'diff', 'patch', 'bc', 'dc', 'expr', 'let', 'seq',
+  // Development tools
+  'gcc', 'g++', 'make', 'cmake', 'git', 'svn', 'cvs', 'python', 'python3', 'node', 'npm', 'yarn', 'java', 'javac', 'mvn', 'gradle',
+  // Monitoring and logging
+  'top', 'htop', 'iotop', 'iftop', 'nethogs', 'sar', 'iostat', 'vmstat', 'mpstat', 'pidstat', 'strace', 'ltrace',
+  // Security tools
+  'openssl', 'gpg', 'ssh-keygen', 'ssh-copy-id', 'iptables', 'ufw', 'fail2ban', 'clamav', 'rkhunter', 'chkrootkit',
+  // Backup and sync
+  'rsync', 'dd', 'cpio', 'dump', 'restore', 'pv', 'rclone',
+  // System maintenance
+  'cron', 'anacron', 'logrotate', 'tmpwatch', 'tmpreaper', 'updatedb', 'locate', 'find', 'xargs', 'parallel',
+  // User environment
+  'env', 'export', 'set', 'unset', 'alias', 'unalias', 'history', 'source', '.', 'exec', 'eval',
+  // Shell utilities
+  'basename', 'dirname', 'realpath', 'readlink', 'which', 'whereis', 'type', 'command', 'hash', 'help', 'man', 'info',
+  // Date and time
+  'date', 'cal', 'timedatectl', 'ntpdate', 'hwclock', 'tzselect',
+  // Math and calculations
+  'bc', 'dc', 'expr', 'let', 'seq', 'factor', 'primes', 'units',
+  // Miscellaneous
+  'clear', 'reset', 'tput', 'stty', 'script', 'watch', 'yes', 'no', 'true', 'false', 'sleep', 'usleep', 'time', 'timeout',
+  // Kali Linux Security Tools
+  'nmap', 'zenmap', 'masscan', 'amass', 'subfinder', 'sublist3r', 'theharvester', 'recon-ng', 'maltego', 'spiderfoot', 'osint-spy', 'holehe', 'h8mail', 'breach-parse',
+  'openvas', 'nessus', 'nexpose', 'qualys', 'nikto', 'wpscan', 'joomscan', 'droopescan', 'plecost', 'w3af', 'zap', 'burpsuite', 'sqlmap', 'nosqlmap', 'xsstrike', 'xsser',
+  'burpsuite', 'zap', 'w3af', 'nikto', 'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'sqlmap', 'xsstrike', 'commix', 'weevely', 'webshell', 'shellshock', 'heartbleed',
+  'sqlmap', 'nosqlmap', 'sqlninja', 'bsqlbf', 'sqldict', 'mysqlmap', 'oracle-tns', 'mssqlmap', 'psqlmap', 'redis-cli', 'mongodb', 'couchdb',
+  'john', 'hashcat', 'hydra', 'medusa', 'ncrack', 'patator', 'crowbar', 'thc-pptp-bruter', 'cewl', 'crunch', 'wordlists', 'rockyou', 'hash-identifier', 'hashid',
+  'aircrack-ng', 'reaver', 'wash', 'bully', 'cowpatty', 'pyrit', 'kismet', 'wireshark', 'tshark', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'airtun-ng', 'packetforge-ng',
+  'metasploit', 'msfconsole', 'msfvenom', 'msfdb', 'armitage', 'beef-xss', 'social-engineer-toolkit', 'setoolkit', 'empire', 'cobaltstrike', 'powersploit', 'veil', 'shellter',
+  'wireshark', 'tshark', 'tcpdump', 'ettercap', 'dsniff', 'responder', 'bettercap', 'mitmproxy', 'mitmdump', 'sslstrip', 'sslstrip2', 'dns2proxy', 'dnschef',
+  'mimikatz', 'powersploit', 'empire', 'cobaltstrike', 'meterpreter', 'beacon', 'psexec', 'wmiexec', 'smbexec', 'pth-winexe', 'secretsdump', 'wce', 'mimipenguin',
+  'autopsy', 'sleuthkit', 'volatility', 'memdump', 'dd', 'dcfldd', 'dc3dd', 'guymager', 'foremost', 'scalpel', 'photorec', 'testdisk', 'extundelete', 'ext4magic',
+  'dradis', 'faraday', 'pipal', 'magic-tree', 'keepnote', 'cherrytree', 'joplin', 'tiddlywiki', 'mediawiki', 'dokuwiki',
+  'social-engineer-toolkit', 'setoolkit', 'beef-xss', 'phishing-frenzy', 'king-phisher', 'gophish', 'evilginx2', 'credphish', 'phishery',
+  'ghidra', 'radare2', 'r2', 'ida', 'x64dbg', 'ollydbg', 'gdb', 'objdump', 'readelf', 'strings', 'hexdump', 'xxd', 'file', 'binwalk', 'upx', 'peid',
+  'arduino', 'avrdude', 'busybox', 'minicom', 'screen', 'putty', 'teraterm', 'securecrt', 'kermit', 'picocom', 'gtkterm', 'cutecom',
+  'apktool', 'dex2jar', 'jd-gui', 'jadx', 'androguard', 'androlyze', 'mobsf', 'drozer', 'objection', 'frida', 'jadx-gui', 'bytecode-viewer',
+  'firmwalker', 'binwalk', 'firmware-mod-kit', 'firmware-analysis-toolkit', 'qemu', 'gdb-multiarch', 'r2', 'ghidra', 'ida', 'angr', 'unicorn',
+  'pacu', 'cloudsploit', 'scoutsuite', 'cloudmapper', 'awscli', 'gcloud', 'az', 'terraform', 'ansible', 'chef', 'puppet', 'salt',
+  'docker', 'docker-compose', 'kubectl', 'helm', 'rancher', 'trivy', 'clair', 'anchore', 'snyk', 'falco', 'opa', 'gatekeeper',
+  'snort', 'suricata', 'bro', 'zeek', 'moloch', 'arkime', 'elasticsearch', 'kibana', 'logstash', 'beats', 'graylog', 'splunk',
+  'dirsearch', 'gospider', 'hakrawler', 'waybackurls', 'gau', 'httpx', 'httprobe', 'subjack', 'subzy', 'tko-subs', 'corstest', 'corsy'
+];
+
 // Command: Send prompt to Mistral AI
 program
   .command('ask <prompt>')
@@ -31,12 +198,18 @@ program
       console.error(chalk.red('Error: Please set your MISTRAL_API_KEY environment variable.'));
       process.exit(1);
     }
+    // Validate API key format
+    if (apiKey.length < 10) {
+      console.error(chalk.red('Error: MISTRAL_API_KEY appears to be too short. Please check your API key.'));
+      process.exit(1);
+    }
+    console.log(chalk.blue('🔑 API Key found, attempting API call...'));
     const mcpPrompt = formatMCPPrompt(options.system, prompt);
     try {
       const response = await axios.post(
         'https://api.mistral.ai/v1/chat/completions',
         {
-          model: 'mistral-tiny', // Change model as needed
+          model: 'mistral-tiny',
           messages: mcpPrompt
         },
         {
@@ -48,7 +221,17 @@ program
       );
       console.log(chalk.green(response.data.choices[0].message.content));
     } catch (err) {
-      console.error(chalk.red('API Error:'), chalk.yellow(err.response ? JSON.stringify(err.response.data, null, 2) : err.message));
+      console.error(chalk.red('API Error:'));
+      if (err.response) {
+        console.error(chalk.yellow(`Status: ${err.response.status}`));
+        console.error(chalk.yellow(`Data: ${JSON.stringify(err.response.data, null, 2)}`));
+      } else if (err.request) {
+        console.error(chalk.yellow('No response received from API'));
+        console.error(chalk.yellow(`Request error: ${err.message}`));
+      } else {
+        console.error(chalk.yellow(`Error: ${err.message}`));
+      }
+      console.error(chalk.blue('💡 Check your MISTRAL_API_KEY environment variable'));
     }
   });
 
@@ -64,9 +247,7 @@ program
         console.error(chalk.red(`Error: ${stderr}`));
         process.exit(1);
       }
-      // Here, you could send stdout as part of the MCP prompt to Mistral
       console.log(chalk.cyan('Command output:'), chalk.green(stdout));
-      // Optionally, call the ask command logic here
     });
   });
 
@@ -135,190 +316,22 @@ program
             ask();
           }
         } catch (err) {
-          console.error(chalk.red('API Error:'), chalk.yellow(err.response ? JSON.stringify(err.response.data, null, 2) : err.message));
+          console.error(chalk.red('API Error:'));
+          if (err.response) {
+            console.error(chalk.yellow(`Status: ${err.response.status}`));
+            console.error(chalk.yellow(`Data: ${JSON.stringify(err.response.data, null, 2)}`));
+          } else if (err.request) {
+            console.error(chalk.yellow('No response received from API'));
+            console.error(chalk.yellow(`Request error: ${err.message}`));
+          } else {
+            console.error(chalk.yellow(`Error: ${err.message}`));
+          }
+          console.error(chalk.blue('💡 Check your MISTRAL_API_KEY environment variable'));
           ask();
         }
       });
     };
     ask();
-  });
-
-// Command: AGI - Convert instruction to shell command and execute
-program
-  .command('agi <instruction...>')
-  .description('Give a natural language instruction, get it executed as a shell command')
-  .option('-s, --system <system>', 'System context', 'Convert the following user instruction into a single Linux shell command. Only output the command, nothing else.')
-  .action(async (instruction, options) => {
-    const apiKey = process.env.MISTRAL_API_KEY;
-    if (!apiKey) {
-      console.error(chalk.red('Error: Please set your MISTRAL_API_KEY environment variable.'));
-      process.exit(1);
-    }
-    const userInstruction = instruction.join(' ');
-    const mcpPrompt = [
-      { role: 'system', content: options.system },
-      { role: 'user', content: userInstruction }
-    ];
-    try {
-      const response = await axios.post(
-        'https://api.mistral.ai/v1/chat/completions',
-        {
-          model: 'mistral-tiny',
-          messages: mcpPrompt
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      let reply = response.data.choices[0].message.content;
-      // Extract command from code block if present
-      let commandToRun = '';
-      const codeBlockMatch = reply.match(/```(?:bash|sh|zsh)?\n([\s\S]*?)```/);
-      const isValidShellCommand = l => /^[a-zA-Z0-9_./~\-]+(\s|$)/.test(l) && !/^([Tt]o|[Tt]he|[Ii]f|[Ff]or|[Nn]ote|[Uu]se|[Ww]hen|[Yy]ou|[Aa]nd|[Oo]r|[Ss]o|[Bb]ut|[Hh]ow|[Ww]ith|[Ii]n|[Aa]s|[Tt]his|[Tt]hat|[Tt]here|[Hh]ere|[Ee]xample|[Ee]tc)/.test(l);
-      if (codeBlockMatch) {
-        // Take the first non-empty, valid shell command line from the code block
-        commandToRun = codeBlockMatch[1].split('\n').map(l => l.trim()).filter(isValidShellCommand)[0] || '';
-        // Remove explanations/comments after # or (
-        if (commandToRun.includes('#')) commandToRun = commandToRun.split('#')[0].trim();
-        if (commandToRun.includes('(')) commandToRun = commandToRun.split('(')[0].trim();
-      } else {
-        // Remove backticks and take the first non-empty, valid shell command line
-        const lines = reply.replace(/`/g, '').split('\n').map(l => l.trim()).filter(isValidShellCommand);
-        commandToRun = lines[0] || '';
-        // Remove explanations/comments after # or (
-        if (commandToRun.includes('#')) commandToRun = commandToRun.split('#')[0].trim();
-        if (commandToRun.includes('(')) commandToRun = commandToRun.split('(')[0].trim();
-      }
-      if (!commandToRun) {
-        console.log(chalk.red('No valid shell command found in the AI response.'));
-        console.log(chalk.yellow('AI raw response:'), reply);
-        // Fallback: try to extract a line containing a common shell command
-        const fallbackCommands = [
-          // File and directory operations
-          'ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'ln', 'ln -s', 'file', 'stat', 'wc', 'sort', 'uniq', 'cut', 'paste', 'join', 'split', 'tr', 'sed', 'awk',
-          // Text processing
-          'grep', 'egrep', 'fgrep', 'head', 'tail', 'less', 'more', 'nano', 'vim', 'vi', 'gedit', 'nano', 'emacs', 'tee', 'column', 'fmt', 'fold', 'nl', 'pr', 'rev', 'tac',
-          // System information
-          'ps', 'top', 'htop', 'free', 'df', 'du', 'uptime', 'who', 'whoami', 'w', 'id', 'groups', 'uname', 'hostname', 'hostnamectl', 'lscpu', 'lsmem', 'lshw', 'dmidecode', 'lspci', 'lsusb',
-          // Process management
-          'kill', 'killall', 'pkill', 'pgrep', 'nice', 'renice', 'nohup', 'screen', 'tmux', 'jobs', 'bg', 'fg', 'wait', 'timeout',
-          // Network tools
-          'curl', 'wget', 'ping', 'traceroute', 'mtr', 'netstat', 'ss', 'ip', 'ifconfig', 'route', 'arp', 'dig', 'nslookup', 'host', 'whois', 'telnet', 'nc', 'netcat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp',
-          // Package management
-          'apt', 'apt-get', 'apt-cache', 'dpkg', 'rpm', 'yum', 'dnf', 'pacman', 'zypper', 'snap', 'flatpak', 'brew',
-          // Compression and archiving
-          'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', 'xz', 'unxz', '7z', 'rar', 'unrar',
-          // File permissions and ownership
-          'chmod', 'chown', 'chgrp', 'umask', 'su', 'sudo', 'passwd', 'useradd', 'userdel', 'usermod', 'groupadd', 'groupdel', 'groupmod',
-          // Disk and filesystem
-          'mount', 'umount', 'fdisk', 'parted', 'mkfs', 'fsck', 'blkid', 'lsblk', 'findmnt', 'swapon', 'swapoff',
-          // System services
-          'systemctl', 'service', 'init', 'systemd', 'journalctl', 'logrotate', 'cron', 'crontab', 'at', 'batch',
-          // Hardware and devices
-          'lspci', 'lsusb', 'lsmod', 'modprobe', 'insmod', 'rmmod', 'dmesg', 'udevadm', 'lshw', 'inxi', 'sensors', 'smartctl',
-          // Text and data processing
-          'awk', 'sed', 'grep', 'cut', 'paste', 'join', 'sort', 'uniq', 'comm', 'diff', 'patch', 'bc', 'dc', 'expr', 'let', 'seq',
-          // Development tools
-          'gcc', 'g++', 'make', 'cmake', 'git', 'svn', 'cvs', 'python', 'python3', 'node', 'npm', 'yarn', 'java', 'javac', 'mvn', 'gradle',
-          // Monitoring and logging
-          'top', 'htop', 'iotop', 'iftop', 'nethogs', 'iotop', 'sar', 'iostat', 'vmstat', 'mpstat', 'pidstat', 'strace', 'ltrace',
-          // Security tools
-          'openssl', 'gpg', 'ssh-keygen', 'ssh-copy-id', 'iptables', 'ufw', 'fail2ban', 'clamav', 'rkhunter', 'chkrootkit',
-          // Backup and sync
-          'rsync', 'dd', 'cpio', 'dump', 'restore', 'tar', 'dd', 'pv', 'rsync', 'scp', 'sftp', 'rclone',
-          // System maintenance
-          'cron', 'anacron', 'logrotate', 'tmpwatch', 'tmpreaper', 'updatedb', 'locate', 'find', 'xargs', 'parallel',
-          // User environment
-          'env', 'export', 'set', 'unset', 'alias', 'unalias', 'history', 'source', '.', 'exec', 'eval',
-          // Shell utilities
-          'basename', 'dirname', 'realpath', 'readlink', 'which', 'whereis', 'type', 'command', 'hash', 'help', 'man', 'info',
-          // Date and time
-          'date', 'cal', 'timedatectl', 'ntpdate', 'hwclock', 'tzselect',
-          // Math and calculations
-          'bc', 'dc', 'expr', 'let', 'seq', 'factor', 'primes', 'units',
-          // Miscellaneous
-          'clear', 'reset', 'tput', 'stty', 'script', 'watch', 'yes', 'no', 'true', 'false', 'sleep', 'usleep', 'time', 'timeout',
-          // Kali Linux Security Tools
-          // Information Gathering
-          'nmap', 'zenmap', 'masscan', 'amass', 'subfinder', 'sublist3r', 'theharvester', 'recon-ng', 'maltego', 'spiderfoot', 'osint-spy', 'holehe', 'h8mail', 'breach-parse',
-          // Vulnerability Analysis
-          'openvas', 'nessus', 'nexpose', 'qualys', 'nikto', 'wpscan', 'joomscan', 'droopescan', 'plecost', 'w3af', 'zap', 'burpsuite', 'sqlmap', 'nosqlmap', 'xsstrike', 'xsser',
-          // Web Application Analysis
-          'burpsuite', 'zap', 'w3af', 'nikto', 'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'sqlmap', 'xsstrike', 'commix', 'weevely', 'webshell', 'shellshock', 'heartbleed',
-          // Database Assessment
-          'sqlmap', 'nosqlmap', 'sqlninja', 'bsqlbf', 'sqldict', 'mysqlmap', 'oracle-tns', 'mssqlmap', 'psqlmap', 'redis-cli', 'mongodb', 'couchdb',
-          // Password Attacks
-          'john', 'hashcat', 'hydra', 'medusa', 'ncrack', 'patator', 'crowbar', 'thc-pptp-bruter', 'cewl', 'crunch', 'wordlists', 'rockyou', 'hash-identifier', 'hashid',
-          // Wireless Attacks
-          'aircrack-ng', 'reaver', 'wash', 'bully', 'cowpatty', 'pyrit', 'kismet', 'wireshark', 'tshark', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'airtun-ng', 'packetforge-ng',
-          // Exploitation Tools
-          'metasploit', 'msfconsole', 'msfvenom', 'msfdb', 'armitage', 'beef-xss', 'social-engineer-toolkit', 'setoolkit', 'empire', 'cobaltstrike', 'powersploit', 'veil', 'shellter',
-          // Sniffing & Spoofing
-          'wireshark', 'tshark', 'tcpdump', 'ettercap', 'dsniff', 'responder', 'bettercap', 'mitmproxy', 'mitmdump', 'sslstrip', 'sslstrip2', 'dns2proxy', 'dnschef',
-          // Post Exploitation
-          'mimikatz', 'powersploit', 'empire', 'cobaltstrike', 'meterpreter', 'beacon', 'psexec', 'wmiexec', 'smbexec', 'pth-winexe', 'secretsdump', 'wce', 'mimipenguin',
-          // Forensics
-          'autopsy', 'sleuthkit', 'volatility', 'memdump', 'dd', 'dcfldd', 'dc3dd', 'guymager', 'foremost', 'scalpel', 'photorec', 'testdisk', 'extundelete', 'ext4magic',
-          // Reporting Tools
-          'dradis', 'faraday', 'pipal', 'magic-tree', 'keepnote', 'cherrytree', 'joplin', 'tiddlywiki', 'mediawiki', 'dokuwiki',
-          // Social Engineering
-          'social-engineer-toolkit', 'setoolkit', 'beef-xss', 'phishing-frenzy', 'king-phisher', 'gophish', 'evilginx2', 'credphish', 'phishery',
-          // Reverse Engineering
-          'ghidra', 'radare2', 'r2', 'ida', 'x64dbg', 'ollydbg', 'gdb', 'objdump', 'readelf', 'strings', 'hexdump', 'xxd', 'file', 'binwalk', 'upx', 'peid',
-          // Hardware Hacking
-          'arduino', 'avrdude', 'busybox', 'minicom', 'screen', 'putty', 'teraterm', 'securecrt', 'kermit', 'picocom', 'gtkterm', 'cutecom',
-          // Mobile Security
-          'apktool', 'dex2jar', 'jd-gui', 'jadx', 'androguard', 'androlyze', 'mobsf', 'drozer', 'objection', 'frida', 'jadx-gui', 'bytecode-viewer',
-          // IoT Security
-          'firmwalker', 'binwalk', 'firmware-mod-kit', 'firmware-analysis-toolkit', 'qemu', 'gdb-multiarch', 'r2', 'ghidra', 'ida', 'angr', 'unicorn',
-          // Cloud Security
-          'pacu', 'cloudsploit', 'scoutsuite', 'cloudmapper', 'awscli', 'gcloud', 'az', 'terraform', 'ansible', 'chef', 'puppet', 'salt',
-          // Container Security
-          'docker', 'docker-compose', 'kubectl', 'helm', 'rancher', 'trivy', 'clair', 'anchore', 'snyk', 'falco', 'opa', 'gatekeeper',
-          // Network Security
-          'snort', 'suricata', 'bro', 'zeek', 'moloch', 'arkime', 'elasticsearch', 'kibana', 'logstash', 'beats', 'graylog', 'splunk',
-          // Additional Tools
-          'dirsearch', 'gospider', 'hakrawler', 'waybackurls', 'gau', 'httpx', 'httprobe', 'subjack', 'subzy', 'tko-subs', 'corstest', 'corsy'
-        ];
-        let fallbackLine = reply.split('\n').map(l => l.trim()).find(l => fallbackCommands.some(cmd => l.startsWith(cmd + ' ')));
-        // Fallback 2: look for a command inside backticks
-        if (!fallbackLine) {
-          const backtickMatches = reply.match(/`([^`]+)`/g);
-          if (backtickMatches) {
-            fallbackLine = backtickMatches.map(s => s.replace(/`/g, '').trim()).find(l => fallbackCommands.some(cmd => l.startsWith(cmd + ' ')));
-          }
-        }
-        if (fallbackLine) {
-          let fallbackCommand = fallbackLine;
-          if (fallbackCommand.includes('#')) fallbackCommand = fallbackCommand.split('#')[0].trim();
-          if (fallbackCommand.includes('(')) fallbackCommand = fallbackCommand.split('(')[0].trim();
-          console.log(chalk.magenta('Fallback: Executing command:'), chalk.cyan(fallbackCommand));
-          exec(fallbackCommand, (error, stdout, stderr) => {
-            let logEntry = `\n> Instruction: ${userInstruction}\n> Command: ${fallbackCommand}\n> Output:\n${stdout || stderr || error?.message || ''}`;
-            fs.appendFileSync(logPath, logEntry);
-            if (error) {
-              console.log(chalk.red('Command error:'), chalk.yellow(stderr || error.message));
-            } else {
-              console.log(chalk.cyan('Command output:'), chalk.green(stdout));
-            }
-          });
-        }
-        return;
-      }
-      console.log(chalk.magenta('Executing command:'), chalk.cyan(commandToRun));
-      exec(commandToRun, (error, stdout, stderr) => {
-        if (error) {
-          console.log(chalk.red('Command error:'), chalk.yellow(stderr || error.message));
-        } else {
-          console.log(chalk.cyan('Command output:'), chalk.green(stdout));
-        }
-      });
-    } catch (err) {
-      console.error(chalk.red('API Error:'), chalk.yellow(err.response ? JSON.stringify(err.response.data, null, 2) : err.message));
-    }
   });
 
 // Default/fallback command: treat any unknown command as a natural language instruction
@@ -331,6 +344,12 @@ program
       console.error(chalk.red('Error: Please set your MISTRAL_API_KEY environment variable.'));
       process.exit(1);
     }
+    // Validate API key format
+    if (apiKey.length < 10) {
+      console.error(chalk.red('Error: MISTRAL_API_KEY appears to be too short. Please check your API key.'));
+      process.exit(1);
+    }
+    console.log(chalk.blue('🔑 API Key found, attempting API call...'));
     const userInstruction = instruction.join(' ');
     const logPath = path.join(require('os').homedir(), '.ai_cli_log');
     let logContext = '';
@@ -342,9 +361,27 @@ program
         logContext = lines.slice(-30).join('\n');
       }
     }
+    // Parse user intent
+    const userIntent = parseUserIntent(userInstruction);
+    
     let systemPrompt = 'Convert the following user instruction into a single Linux shell command. Only output the command, nothing else.';
     if (logContext) {
       systemPrompt = `Here is the recent terminal log. Use it to understand references like \'the newly added file\'.\n\nLOG:\n${logContext}\n\nNow, convert the following user instruction into a single Linux shell command. Only output the command, nothing else.`;
+    }
+    // Enhanced system prompt for intelligent processing
+    if (userIntent.isComplex) {
+      systemPrompt = systemPrompt.replace('single Linux shell command', 'multiple Linux shell commands separated by newlines. Each command should be on its own line. For complex tasks, break them into steps. Use command substitution $(command) or variables to pass data between commands. Consider using multiple tools if needed.');
+    }
+    
+    // Add format instructions
+    if (userIntent.format !== 'default') {
+      systemPrompt += `\n\nIMPORTANT: Format the output as ${userIntent.format.toUpperCase()}. Use appropriate tools like jq for JSON, column for tables, or sed/awk for clean formatting.`;
+    }
+    
+    // Add tool suggestions
+    if (userIntent.tools.length > 0) {
+      const suggestedTools = userIntent.tools.map(tool => selectBestTool(tool)).flat();
+      systemPrompt += `\n\nSUGGESTED TOOLS: Consider using ${suggestedTools.join(', ')} for this task.`;
     }
     const mcpPrompt = [
       { role: 'system', content: systemPrompt },
@@ -387,99 +424,12 @@ program
         console.log(chalk.red('No valid shell command found in the AI response.'));
         console.log(chalk.yellow('AI raw response:'), reply);
         // Fallback: try to extract a line containing a common shell command
-        const fallbackCommands = [
-          // File and directory operations
-          'ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'ln', 'ln -s', 'file', 'stat', 'wc', 'sort', 'uniq', 'cut', 'paste', 'join', 'split', 'tr', 'sed', 'awk',
-          // Text processing
-          'grep', 'egrep', 'fgrep', 'head', 'tail', 'less', 'more', 'nano', 'vim', 'vi', 'gedit', 'nano', 'emacs', 'tee', 'column', 'fmt', 'fold', 'nl', 'pr', 'rev', 'tac',
-          // System information
-          'ps', 'top', 'htop', 'free', 'df', 'du', 'uptime', 'who', 'whoami', 'w', 'id', 'groups', 'uname', 'hostname', 'hostnamectl', 'lscpu', 'lsmem', 'lshw', 'dmidecode', 'lspci', 'lsusb',
-          // Process management
-          'kill', 'killall', 'pkill', 'pgrep', 'nice', 'renice', 'nohup', 'screen', 'tmux', 'jobs', 'bg', 'fg', 'wait', 'timeout',
-          // Network tools
-          'curl', 'wget', 'ping', 'traceroute', 'mtr', 'netstat', 'ss', 'ip', 'ifconfig', 'route', 'arp', 'dig', 'nslookup', 'host', 'whois', 'telnet', 'nc', 'netcat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp',
-          // Package management
-          'apt', 'apt-get', 'apt-cache', 'dpkg', 'rpm', 'yum', 'dnf', 'pacman', 'zypper', 'snap', 'flatpak', 'brew',
-          // Compression and archiving
-          'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', 'xz', 'unxz', '7z', 'rar', 'unrar',
-          // File permissions and ownership
-          'chmod', 'chown', 'chgrp', 'umask', 'su', 'sudo', 'passwd', 'useradd', 'userdel', 'usermod', 'groupadd', 'groupdel', 'groupmod',
-          // Disk and filesystem
-          'mount', 'umount', 'fdisk', 'parted', 'mkfs', 'fsck', 'blkid', 'lsblk', 'findmnt', 'swapon', 'swapoff',
-          // System services
-          'systemctl', 'service', 'init', 'systemd', 'journalctl', 'logrotate', 'cron', 'crontab', 'at', 'batch',
-          // Hardware and devices
-          'lspci', 'lsusb', 'lsmod', 'modprobe', 'insmod', 'rmmod', 'dmesg', 'udevadm', 'lshw', 'inxi', 'sensors', 'smartctl',
-          // Text and data processing
-          'awk', 'sed', 'grep', 'cut', 'paste', 'join', 'sort', 'uniq', 'comm', 'diff', 'patch', 'bc', 'dc', 'expr', 'let', 'seq',
-          // Development tools
-          'gcc', 'g++', 'make', 'cmake', 'git', 'svn', 'cvs', 'python', 'python3', 'node', 'npm', 'yarn', 'java', 'javac', 'mvn', 'gradle',
-          // Monitoring and logging
-          'top', 'htop', 'iotop', 'iftop', 'nethogs', 'iotop', 'sar', 'iostat', 'vmstat', 'mpstat', 'pidstat', 'strace', 'ltrace',
-          // Security tools
-          'openssl', 'gpg', 'ssh-keygen', 'ssh-copy-id', 'iptables', 'ufw', 'fail2ban', 'clamav', 'rkhunter', 'chkrootkit',
-          // Backup and sync
-          'rsync', 'dd', 'cpio', 'dump', 'restore', 'tar', 'dd', 'pv', 'rsync', 'scp', 'sftp', 'rclone',
-          // System maintenance
-          'cron', 'anacron', 'logrotate', 'tmpwatch', 'tmpreaper', 'updatedb', 'locate', 'find', 'xargs', 'parallel',
-          // User environment
-          'env', 'export', 'set', 'unset', 'alias', 'unalias', 'history', 'source', '.', 'exec', 'eval',
-          // Shell utilities
-          'basename', 'dirname', 'realpath', 'readlink', 'which', 'whereis', 'type', 'command', 'hash', 'help', 'man', 'info',
-          // Date and time
-          'date', 'cal', 'timedatectl', 'ntpdate', 'hwclock', 'tzselect',
-          // Math and calculations
-          'bc', 'dc', 'expr', 'let', 'seq', 'factor', 'primes', 'units',
-          // Miscellaneous
-          'clear', 'reset', 'tput', 'stty', 'script', 'watch', 'yes', 'no', 'true', 'false', 'sleep', 'usleep', 'time', 'timeout',
-          // Kali Linux Security Tools
-          // Information Gathering
-          'nmap', 'zenmap', 'masscan', 'amass', 'subfinder', 'sublist3r', 'theharvester', 'recon-ng', 'maltego', 'spiderfoot', 'osint-spy', 'holehe', 'h8mail', 'breach-parse',
-          // Vulnerability Analysis
-          'openvas', 'nessus', 'nexpose', 'qualys', 'nikto', 'wpscan', 'joomscan', 'droopescan', 'plecost', 'w3af', 'zap', 'burpsuite', 'sqlmap', 'nosqlmap', 'xsstrike', 'xsser',
-          // Web Application Analysis
-          'burpsuite', 'zap', 'w3af', 'nikto', 'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'sqlmap', 'xsstrike', 'commix', 'weevely', 'webshell', 'shellshock', 'heartbleed',
-          // Database Assessment
-          'sqlmap', 'nosqlmap', 'sqlninja', 'bsqlbf', 'sqldict', 'mysqlmap', 'oracle-tns', 'mssqlmap', 'psqlmap', 'redis-cli', 'mongodb', 'couchdb',
-          // Password Attacks
-          'john', 'hashcat', 'hydra', 'medusa', 'ncrack', 'patator', 'crowbar', 'thc-pptp-bruter', 'cewl', 'crunch', 'wordlists', 'rockyou', 'hash-identifier', 'hashid',
-          // Wireless Attacks
-          'aircrack-ng', 'reaver', 'wash', 'bully', 'cowpatty', 'pyrit', 'kismet', 'wireshark', 'tshark', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'airtun-ng', 'packetforge-ng',
-          // Exploitation Tools
-          'metasploit', 'msfconsole', 'msfvenom', 'msfdb', 'armitage', 'beef-xss', 'social-engineer-toolkit', 'setoolkit', 'empire', 'cobaltstrike', 'powersploit', 'veil', 'shellter',
-          // Sniffing & Spoofing
-          'wireshark', 'tshark', 'tcpdump', 'ettercap', 'dsniff', 'responder', 'bettercap', 'mitmproxy', 'mitmdump', 'sslstrip', 'sslstrip2', 'dns2proxy', 'dnschef',
-          // Post Exploitation
-          'mimikatz', 'powersploit', 'empire', 'cobaltstrike', 'meterpreter', 'beacon', 'psexec', 'wmiexec', 'smbexec', 'pth-winexe', 'secretsdump', 'wce', 'mimipenguin',
-          // Forensics
-          'autopsy', 'sleuthkit', 'volatility', 'memdump', 'dd', 'dcfldd', 'dc3dd', 'guymager', 'foremost', 'scalpel', 'photorec', 'testdisk', 'extundelete', 'ext4magic',
-          // Reporting Tools
-          'dradis', 'faraday', 'pipal', 'magic-tree', 'keepnote', 'cherrytree', 'joplin', 'tiddlywiki', 'mediawiki', 'dokuwiki',
-          // Social Engineering
-          'social-engineer-toolkit', 'setoolkit', 'beef-xss', 'phishing-frenzy', 'king-phisher', 'gophish', 'evilginx2', 'credphish', 'phishery',
-          // Reverse Engineering
-          'ghidra', 'radare2', 'r2', 'ida', 'x64dbg', 'ollydbg', 'gdb', 'objdump', 'readelf', 'strings', 'hexdump', 'xxd', 'file', 'binwalk', 'upx', 'peid',
-          // Hardware Hacking
-          'arduino', 'avrdude', 'busybox', 'minicom', 'screen', 'putty', 'teraterm', 'securecrt', 'kermit', 'picocom', 'gtkterm', 'cutecom',
-          // Mobile Security
-          'apktool', 'dex2jar', 'jd-gui', 'jadx', 'androguard', 'androlyze', 'mobsf', 'drozer', 'objection', 'frida', 'jadx-gui', 'bytecode-viewer',
-          // IoT Security
-          'firmwalker', 'binwalk', 'firmware-mod-kit', 'firmware-analysis-toolkit', 'qemu', 'gdb-multiarch', 'r2', 'ghidra', 'ida', 'angr', 'unicorn',
-          // Cloud Security
-          'pacu', 'cloudsploit', 'scoutsuite', 'cloudmapper', 'awscli', 'gcloud', 'az', 'terraform', 'ansible', 'chef', 'puppet', 'salt',
-          // Container Security
-          'docker', 'docker-compose', 'kubectl', 'helm', 'rancher', 'trivy', 'clair', 'anchore', 'snyk', 'falco', 'opa', 'gatekeeper',
-          // Network Security
-          'snort', 'suricata', 'bro', 'zeek', 'moloch', 'arkime', 'elasticsearch', 'kibana', 'logstash', 'beats', 'graylog', 'splunk',
-          // Additional Tools
-          'dirsearch', 'gospider', 'hakrawler', 'waybackurls', 'gau', 'httpx', 'httprobe', 'subjack', 'subzy', 'tko-subs', 'corstest', 'corsy'
-        ];
-        let fallbackLine = reply.split('\n').map(l => l.trim()).find(l => fallbackCommands.some(cmd => l.startsWith(cmd + ' ')));
+        let fallbackLine = reply.split('\n').map(l => l.trim()).find(l => FALLBACK_COMMANDS.some(cmd => l.startsWith(cmd + ' ')));
         // Fallback 2: look for a command inside backticks
         if (!fallbackLine) {
           const backtickMatches = reply.match(/`([^`]+)`/g);
           if (backtickMatches) {
-            fallbackLine = backtickMatches.map(s => s.replace(/`/g, '').trim()).find(l => fallbackCommands.some(cmd => l.startsWith(cmd + ' ')));
+            fallbackLine = backtickMatches.map(s => s.replace(/`/g, '').trim()).find(l => FALLBACK_COMMANDS.some(cmd => l.startsWith(cmd + ' ')));
           }
         }
         if (fallbackLine) {
@@ -506,12 +456,40 @@ program
         fs.appendFileSync(logPath, logEntry);
         if (error) {
           console.log(chalk.red('Command error:'), chalk.yellow(stderr || error.message));
+          // Try fallback tools if available
+          if (userIntent.tools.length > 0) {
+            console.log(chalk.yellow('Trying alternative tools...'));
+            const fallbackCommands = userIntent.tools.map(tool => selectBestTool(tool)).flat();
+            // Generate fallback command using different tool
+            const fallbackPrompt = `Use ${fallbackCommands[0]} instead to ${userInstruction}`;
+            // You could implement recursive fallback here
+          }
         } else {
-          console.log(chalk.cyan('Command output:'), chalk.green(stdout));
+          // Format output based on user intent
+          const formattedOutput = formatOutput(stdout, userIntent.format);
+          console.log(chalk.cyan('Command output:'), chalk.green(formattedOutput));
+          
+          // Additional intelligent processing
+          if (userIntent.format === 'json' && stdout.trim()) {
+            console.log(chalk.blue('💡 Tip: Use jq for advanced JSON processing'));
+          }
+          if (userIntent.format === 'table' && stdout.includes(' ')) {
+            console.log(chalk.blue('💡 Tip: Use column -t for better table formatting'));
+          }
         }
       });
     } catch (err) {
-      console.error(chalk.red('API Error:'), chalk.yellow(err.response ? JSON.stringify(err.response.data, null, 2) : err.message));
+      console.error(chalk.red('API Error:'));
+      if (err.response) {
+        console.error(chalk.yellow(`Status: ${err.response.status}`));
+        console.error(chalk.yellow(`Data: ${JSON.stringify(err.response.data, null, 2)}`));
+      } else if (err.request) {
+        console.error(chalk.yellow('No response received from API'));
+        console.error(chalk.yellow(`Request error: ${err.message}`));
+      } else {
+        console.error(chalk.yellow(`Error: ${err.message}`));
+      }
+      console.error(chalk.blue('💡 Check your MISTRAL_API_KEY environment variable'));
     }
   });
 
