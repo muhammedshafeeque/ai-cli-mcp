@@ -196,7 +196,93 @@ program
         console.log(chalk.red('No valid shell command found in the AI response.'));
         console.log(chalk.yellow('AI raw response:'), reply);
         // Fallback: try to extract a line containing a common shell command
-        const fallbackCommands = ['ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'find', 'grep', 'chmod', 'chown', 'head', 'tail', 'du', 'df', 'ps', 'kill', 'tar', 'zip', 'unzip', 'scp', 'curl', 'wget'];
+        const fallbackCommands = [
+          // File and directory operations
+          'ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'ln', 'ln -s', 'file', 'stat', 'wc', 'sort', 'uniq', 'cut', 'paste', 'join', 'split', 'tr', 'sed', 'awk',
+          // Text processing
+          'grep', 'egrep', 'fgrep', 'head', 'tail', 'less', 'more', 'nano', 'vim', 'vi', 'gedit', 'nano', 'emacs', 'tee', 'column', 'fmt', 'fold', 'nl', 'pr', 'rev', 'tac',
+          // System information
+          'ps', 'top', 'htop', 'free', 'df', 'du', 'uptime', 'who', 'whoami', 'w', 'id', 'groups', 'uname', 'hostname', 'hostnamectl', 'lscpu', 'lsmem', 'lshw', 'dmidecode', 'lspci', 'lsusb',
+          // Process management
+          'kill', 'killall', 'pkill', 'pgrep', 'nice', 'renice', 'nohup', 'screen', 'tmux', 'jobs', 'bg', 'fg', 'wait', 'timeout',
+          // Network tools
+          'curl', 'wget', 'ping', 'traceroute', 'mtr', 'netstat', 'ss', 'ip', 'ifconfig', 'route', 'arp', 'dig', 'nslookup', 'host', 'whois', 'telnet', 'nc', 'netcat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp',
+          // Package management
+          'apt', 'apt-get', 'apt-cache', 'dpkg', 'rpm', 'yum', 'dnf', 'pacman', 'zypper', 'snap', 'flatpak', 'brew',
+          // Compression and archiving
+          'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', 'xz', 'unxz', '7z', 'rar', 'unrar',
+          // File permissions and ownership
+          'chmod', 'chown', 'chgrp', 'umask', 'su', 'sudo', 'passwd', 'useradd', 'userdel', 'usermod', 'groupadd', 'groupdel', 'groupmod',
+          // Disk and filesystem
+          'mount', 'umount', 'fdisk', 'parted', 'mkfs', 'fsck', 'blkid', 'lsblk', 'findmnt', 'swapon', 'swapoff',
+          // System services
+          'systemctl', 'service', 'init', 'systemd', 'journalctl', 'logrotate', 'cron', 'crontab', 'at', 'batch',
+          // Hardware and devices
+          'lspci', 'lsusb', 'lsmod', 'modprobe', 'insmod', 'rmmod', 'dmesg', 'udevadm', 'lshw', 'inxi', 'sensors', 'smartctl',
+          // Text and data processing
+          'awk', 'sed', 'grep', 'cut', 'paste', 'join', 'sort', 'uniq', 'comm', 'diff', 'patch', 'bc', 'dc', 'expr', 'let', 'seq',
+          // Development tools
+          'gcc', 'g++', 'make', 'cmake', 'git', 'svn', 'cvs', 'python', 'python3', 'node', 'npm', 'yarn', 'java', 'javac', 'mvn', 'gradle',
+          // Monitoring and logging
+          'top', 'htop', 'iotop', 'iftop', 'nethogs', 'iotop', 'sar', 'iostat', 'vmstat', 'mpstat', 'pidstat', 'strace', 'ltrace',
+          // Security tools
+          'openssl', 'gpg', 'ssh-keygen', 'ssh-copy-id', 'iptables', 'ufw', 'fail2ban', 'clamav', 'rkhunter', 'chkrootkit',
+          // Backup and sync
+          'rsync', 'dd', 'cpio', 'dump', 'restore', 'tar', 'dd', 'pv', 'rsync', 'scp', 'sftp', 'rclone',
+          // System maintenance
+          'cron', 'anacron', 'logrotate', 'tmpwatch', 'tmpreaper', 'updatedb', 'locate', 'find', 'xargs', 'parallel',
+          // User environment
+          'env', 'export', 'set', 'unset', 'alias', 'unalias', 'history', 'source', '.', 'exec', 'eval',
+          // Shell utilities
+          'basename', 'dirname', 'realpath', 'readlink', 'which', 'whereis', 'type', 'command', 'hash', 'help', 'man', 'info',
+          // Date and time
+          'date', 'cal', 'timedatectl', 'ntpdate', 'hwclock', 'tzselect',
+          // Math and calculations
+          'bc', 'dc', 'expr', 'let', 'seq', 'factor', 'primes', 'units',
+          // Miscellaneous
+          'clear', 'reset', 'tput', 'stty', 'script', 'watch', 'yes', 'no', 'true', 'false', 'sleep', 'usleep', 'time', 'timeout',
+          // Kali Linux Security Tools
+          // Information Gathering
+          'nmap', 'zenmap', 'masscan', 'amass', 'subfinder', 'sublist3r', 'theharvester', 'recon-ng', 'maltego', 'spiderfoot', 'osint-spy', 'holehe', 'h8mail', 'breach-parse',
+          // Vulnerability Analysis
+          'openvas', 'nessus', 'nexpose', 'qualys', 'nikto', 'wpscan', 'joomscan', 'droopescan', 'plecost', 'w3af', 'zap', 'burpsuite', 'sqlmap', 'nosqlmap', 'xsstrike', 'xsser',
+          // Web Application Analysis
+          'burpsuite', 'zap', 'w3af', 'nikto', 'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'sqlmap', 'xsstrike', 'commix', 'weevely', 'webshell', 'shellshock', 'heartbleed',
+          // Database Assessment
+          'sqlmap', 'nosqlmap', 'sqlninja', 'bsqlbf', 'sqldict', 'mysqlmap', 'oracle-tns', 'mssqlmap', 'psqlmap', 'redis-cli', 'mongodb', 'couchdb',
+          // Password Attacks
+          'john', 'hashcat', 'hydra', 'medusa', 'ncrack', 'patator', 'crowbar', 'thc-pptp-bruter', 'cewl', 'crunch', 'wordlists', 'rockyou', 'hash-identifier', 'hashid',
+          // Wireless Attacks
+          'aircrack-ng', 'reaver', 'wash', 'bully', 'cowpatty', 'pyrit', 'kismet', 'wireshark', 'tshark', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'airtun-ng', 'packetforge-ng',
+          // Exploitation Tools
+          'metasploit', 'msfconsole', 'msfvenom', 'msfdb', 'armitage', 'beef-xss', 'social-engineer-toolkit', 'setoolkit', 'empire', 'cobaltstrike', 'powersploit', 'veil', 'shellter',
+          // Sniffing & Spoofing
+          'wireshark', 'tshark', 'tcpdump', 'ettercap', 'dsniff', 'responder', 'bettercap', 'mitmproxy', 'mitmdump', 'sslstrip', 'sslstrip2', 'dns2proxy', 'dnschef',
+          // Post Exploitation
+          'mimikatz', 'powersploit', 'empire', 'cobaltstrike', 'meterpreter', 'beacon', 'psexec', 'wmiexec', 'smbexec', 'pth-winexe', 'secretsdump', 'wce', 'mimipenguin',
+          // Forensics
+          'autopsy', 'sleuthkit', 'volatility', 'memdump', 'dd', 'dcfldd', 'dc3dd', 'guymager', 'foremost', 'scalpel', 'photorec', 'testdisk', 'extundelete', 'ext4magic',
+          // Reporting Tools
+          'dradis', 'faraday', 'pipal', 'magic-tree', 'keepnote', 'cherrytree', 'joplin', 'tiddlywiki', 'mediawiki', 'dokuwiki',
+          // Social Engineering
+          'social-engineer-toolkit', 'setoolkit', 'beef-xss', 'phishing-frenzy', 'king-phisher', 'gophish', 'evilginx2', 'credphish', 'phishery',
+          // Reverse Engineering
+          'ghidra', 'radare2', 'r2', 'ida', 'x64dbg', 'ollydbg', 'gdb', 'objdump', 'readelf', 'strings', 'hexdump', 'xxd', 'file', 'binwalk', 'upx', 'peid',
+          // Hardware Hacking
+          'arduino', 'avrdude', 'busybox', 'minicom', 'screen', 'putty', 'teraterm', 'securecrt', 'kermit', 'picocom', 'gtkterm', 'cutecom',
+          // Mobile Security
+          'apktool', 'dex2jar', 'jd-gui', 'jadx', 'androguard', 'androlyze', 'mobsf', 'drozer', 'objection', 'frida', 'jadx-gui', 'bytecode-viewer',
+          // IoT Security
+          'firmwalker', 'binwalk', 'firmware-mod-kit', 'firmware-analysis-toolkit', 'qemu', 'gdb-multiarch', 'r2', 'ghidra', 'ida', 'angr', 'unicorn',
+          // Cloud Security
+          'pacu', 'cloudsploit', 'scoutsuite', 'cloudmapper', 'awscli', 'gcloud', 'az', 'terraform', 'ansible', 'chef', 'puppet', 'salt',
+          // Container Security
+          'docker', 'docker-compose', 'kubectl', 'helm', 'rancher', 'trivy', 'clair', 'anchore', 'snyk', 'falco', 'opa', 'gatekeeper',
+          // Network Security
+          'snort', 'suricata', 'bro', 'zeek', 'moloch', 'arkime', 'elasticsearch', 'kibana', 'logstash', 'beats', 'graylog', 'splunk',
+          // Additional Tools
+          'dirsearch', 'gospider', 'hakrawler', 'waybackurls', 'gau', 'httpx', 'httprobe', 'subjack', 'subzy', 'tko-subs', 'corstest', 'corsy'
+        ];
         let fallbackLine = reply.split('\n').map(l => l.trim()).find(l => fallbackCommands.some(cmd => l.startsWith(cmd + ' ')));
         // Fallback 2: look for a command inside backticks
         if (!fallbackLine) {
@@ -301,7 +387,93 @@ program
         console.log(chalk.red('No valid shell command found in the AI response.'));
         console.log(chalk.yellow('AI raw response:'), reply);
         // Fallback: try to extract a line containing a common shell command
-        const fallbackCommands = ['ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'find', 'grep', 'chmod', 'chown', 'head', 'tail', 'du', 'df', 'ps', 'kill', 'tar', 'zip', 'unzip', 'scp', 'curl', 'wget'];
+        const fallbackCommands = [
+          // File and directory operations
+          'ls', 'cat', 'rm', 'touch', 'cp', 'mv', 'echo', 'pwd', 'cd', 'mkdir', 'rmdir', 'ln', 'ln -s', 'file', 'stat', 'wc', 'sort', 'uniq', 'cut', 'paste', 'join', 'split', 'tr', 'sed', 'awk',
+          // Text processing
+          'grep', 'egrep', 'fgrep', 'head', 'tail', 'less', 'more', 'nano', 'vim', 'vi', 'gedit', 'nano', 'emacs', 'tee', 'column', 'fmt', 'fold', 'nl', 'pr', 'rev', 'tac',
+          // System information
+          'ps', 'top', 'htop', 'free', 'df', 'du', 'uptime', 'who', 'whoami', 'w', 'id', 'groups', 'uname', 'hostname', 'hostnamectl', 'lscpu', 'lsmem', 'lshw', 'dmidecode', 'lspci', 'lsusb',
+          // Process management
+          'kill', 'killall', 'pkill', 'pgrep', 'nice', 'renice', 'nohup', 'screen', 'tmux', 'jobs', 'bg', 'fg', 'wait', 'timeout',
+          // Network tools
+          'curl', 'wget', 'ping', 'traceroute', 'mtr', 'netstat', 'ss', 'ip', 'ifconfig', 'route', 'arp', 'dig', 'nslookup', 'host', 'whois', 'telnet', 'nc', 'netcat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp',
+          // Package management
+          'apt', 'apt-get', 'apt-cache', 'dpkg', 'rpm', 'yum', 'dnf', 'pacman', 'zypper', 'snap', 'flatpak', 'brew',
+          // Compression and archiving
+          'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', 'xz', 'unxz', '7z', 'rar', 'unrar',
+          // File permissions and ownership
+          'chmod', 'chown', 'chgrp', 'umask', 'su', 'sudo', 'passwd', 'useradd', 'userdel', 'usermod', 'groupadd', 'groupdel', 'groupmod',
+          // Disk and filesystem
+          'mount', 'umount', 'fdisk', 'parted', 'mkfs', 'fsck', 'blkid', 'lsblk', 'findmnt', 'swapon', 'swapoff',
+          // System services
+          'systemctl', 'service', 'init', 'systemd', 'journalctl', 'logrotate', 'cron', 'crontab', 'at', 'batch',
+          // Hardware and devices
+          'lspci', 'lsusb', 'lsmod', 'modprobe', 'insmod', 'rmmod', 'dmesg', 'udevadm', 'lshw', 'inxi', 'sensors', 'smartctl',
+          // Text and data processing
+          'awk', 'sed', 'grep', 'cut', 'paste', 'join', 'sort', 'uniq', 'comm', 'diff', 'patch', 'bc', 'dc', 'expr', 'let', 'seq',
+          // Development tools
+          'gcc', 'g++', 'make', 'cmake', 'git', 'svn', 'cvs', 'python', 'python3', 'node', 'npm', 'yarn', 'java', 'javac', 'mvn', 'gradle',
+          // Monitoring and logging
+          'top', 'htop', 'iotop', 'iftop', 'nethogs', 'iotop', 'sar', 'iostat', 'vmstat', 'mpstat', 'pidstat', 'strace', 'ltrace',
+          // Security tools
+          'openssl', 'gpg', 'ssh-keygen', 'ssh-copy-id', 'iptables', 'ufw', 'fail2ban', 'clamav', 'rkhunter', 'chkrootkit',
+          // Backup and sync
+          'rsync', 'dd', 'cpio', 'dump', 'restore', 'tar', 'dd', 'pv', 'rsync', 'scp', 'sftp', 'rclone',
+          // System maintenance
+          'cron', 'anacron', 'logrotate', 'tmpwatch', 'tmpreaper', 'updatedb', 'locate', 'find', 'xargs', 'parallel',
+          // User environment
+          'env', 'export', 'set', 'unset', 'alias', 'unalias', 'history', 'source', '.', 'exec', 'eval',
+          // Shell utilities
+          'basename', 'dirname', 'realpath', 'readlink', 'which', 'whereis', 'type', 'command', 'hash', 'help', 'man', 'info',
+          // Date and time
+          'date', 'cal', 'timedatectl', 'ntpdate', 'hwclock', 'tzselect',
+          // Math and calculations
+          'bc', 'dc', 'expr', 'let', 'seq', 'factor', 'primes', 'units',
+          // Miscellaneous
+          'clear', 'reset', 'tput', 'stty', 'script', 'watch', 'yes', 'no', 'true', 'false', 'sleep', 'usleep', 'time', 'timeout',
+          // Kali Linux Security Tools
+          // Information Gathering
+          'nmap', 'zenmap', 'masscan', 'amass', 'subfinder', 'sublist3r', 'theharvester', 'recon-ng', 'maltego', 'spiderfoot', 'osint-spy', 'holehe', 'h8mail', 'breach-parse',
+          // Vulnerability Analysis
+          'openvas', 'nessus', 'nexpose', 'qualys', 'nikto', 'wpscan', 'joomscan', 'droopescan', 'plecost', 'w3af', 'zap', 'burpsuite', 'sqlmap', 'nosqlmap', 'xsstrike', 'xsser',
+          // Web Application Analysis
+          'burpsuite', 'zap', 'w3af', 'nikto', 'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'sqlmap', 'xsstrike', 'commix', 'weevely', 'webshell', 'shellshock', 'heartbleed',
+          // Database Assessment
+          'sqlmap', 'nosqlmap', 'sqlninja', 'bsqlbf', 'sqldict', 'mysqlmap', 'oracle-tns', 'mssqlmap', 'psqlmap', 'redis-cli', 'mongodb', 'couchdb',
+          // Password Attacks
+          'john', 'hashcat', 'hydra', 'medusa', 'ncrack', 'patator', 'crowbar', 'thc-pptp-bruter', 'cewl', 'crunch', 'wordlists', 'rockyou', 'hash-identifier', 'hashid',
+          // Wireless Attacks
+          'aircrack-ng', 'reaver', 'wash', 'bully', 'cowpatty', 'pyrit', 'kismet', 'wireshark', 'tshark', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'airtun-ng', 'packetforge-ng',
+          // Exploitation Tools
+          'metasploit', 'msfconsole', 'msfvenom', 'msfdb', 'armitage', 'beef-xss', 'social-engineer-toolkit', 'setoolkit', 'empire', 'cobaltstrike', 'powersploit', 'veil', 'shellter',
+          // Sniffing & Spoofing
+          'wireshark', 'tshark', 'tcpdump', 'ettercap', 'dsniff', 'responder', 'bettercap', 'mitmproxy', 'mitmdump', 'sslstrip', 'sslstrip2', 'dns2proxy', 'dnschef',
+          // Post Exploitation
+          'mimikatz', 'powersploit', 'empire', 'cobaltstrike', 'meterpreter', 'beacon', 'psexec', 'wmiexec', 'smbexec', 'pth-winexe', 'secretsdump', 'wce', 'mimipenguin',
+          // Forensics
+          'autopsy', 'sleuthkit', 'volatility', 'memdump', 'dd', 'dcfldd', 'dc3dd', 'guymager', 'foremost', 'scalpel', 'photorec', 'testdisk', 'extundelete', 'ext4magic',
+          // Reporting Tools
+          'dradis', 'faraday', 'pipal', 'magic-tree', 'keepnote', 'cherrytree', 'joplin', 'tiddlywiki', 'mediawiki', 'dokuwiki',
+          // Social Engineering
+          'social-engineer-toolkit', 'setoolkit', 'beef-xss', 'phishing-frenzy', 'king-phisher', 'gophish', 'evilginx2', 'credphish', 'phishery',
+          // Reverse Engineering
+          'ghidra', 'radare2', 'r2', 'ida', 'x64dbg', 'ollydbg', 'gdb', 'objdump', 'readelf', 'strings', 'hexdump', 'xxd', 'file', 'binwalk', 'upx', 'peid',
+          // Hardware Hacking
+          'arduino', 'avrdude', 'busybox', 'minicom', 'screen', 'putty', 'teraterm', 'securecrt', 'kermit', 'picocom', 'gtkterm', 'cutecom',
+          // Mobile Security
+          'apktool', 'dex2jar', 'jd-gui', 'jadx', 'androguard', 'androlyze', 'mobsf', 'drozer', 'objection', 'frida', 'jadx-gui', 'bytecode-viewer',
+          // IoT Security
+          'firmwalker', 'binwalk', 'firmware-mod-kit', 'firmware-analysis-toolkit', 'qemu', 'gdb-multiarch', 'r2', 'ghidra', 'ida', 'angr', 'unicorn',
+          // Cloud Security
+          'pacu', 'cloudsploit', 'scoutsuite', 'cloudmapper', 'awscli', 'gcloud', 'az', 'terraform', 'ansible', 'chef', 'puppet', 'salt',
+          // Container Security
+          'docker', 'docker-compose', 'kubectl', 'helm', 'rancher', 'trivy', 'clair', 'anchore', 'snyk', 'falco', 'opa', 'gatekeeper',
+          // Network Security
+          'snort', 'suricata', 'bro', 'zeek', 'moloch', 'arkime', 'elasticsearch', 'kibana', 'logstash', 'beats', 'graylog', 'splunk',
+          // Additional Tools
+          'dirsearch', 'gospider', 'hakrawler', 'waybackurls', 'gau', 'httpx', 'httprobe', 'subjack', 'subzy', 'tko-subs', 'corstest', 'corsy'
+        ];
         let fallbackLine = reply.split('\n').map(l => l.trim()).find(l => fallbackCommands.some(cmd => l.startsWith(cmd + ' ')));
         // Fallback 2: look for a command inside backticks
         if (!fallbackLine) {
