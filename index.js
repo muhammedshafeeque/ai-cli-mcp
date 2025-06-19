@@ -375,7 +375,7 @@ program
     
     // Add specific instructions for network scanning
     if (userInstruction.toLowerCase().includes('network') || userInstruction.toLowerCase().includes('scan')) {
-      systemPrompt += '\n\nNETWORK SCANNING: For network scanning, use commands like:\n- nmap -sn 192.168.1.0/24 (ping scan)\n- arp-scan --localnet (ARP scan)\n- netdiscover -r 192.168.1.0/24 (network discovery)\nAvoid complex regex patterns. Use simple grep/awk for parsing.';
+      systemPrompt += '\n\nNETWORK SCANNING: For network scanning, use these simple commands:\n- nmap -sn 192.168.1.0/24 (ping scan)\n- arp-scan --localnet (ARP scan)\n- netdiscover -r 192.168.1.0/24 (network discovery)\n- ip neigh show (show ARP table)\n- arp -a (show ARP entries)\n\nIMPORTANT: DO NOT use complex regex patterns like grep -Eo or grep -oP. Use simple commands that work reliably.';
     }
     
     // Add format instructions
@@ -414,12 +414,17 @@ program
       let commandToRun = '';
       const codeBlockMatch = reply.match(/```(?:bash|sh|zsh)?\n([\s\S]*?)```/);
       const isValidShellCommand = l => /^[a-zA-Z0-9_./~\-]+(\s|$)/.test(l) && !/^([Tt]o|[Tt]he|[Ii]f|[Ff]or|[Nn]ote|[Uu]se|[Ww]hen|[Yy]ou|[Aa]nd|[Oo]r|[Ss]o|[Bb]ut|[Hh]ow|[Ww]ith|[Ii]n|[Aa]s|[Tt]his|[Tt]hat|[Tt]here|[Hh]ere|[Ee]xample|[Ee]tc)/.test(l);
+      const hasIncompleteRegex = l => l.includes('grep -Eo') && !l.includes("'") || l.includes('grep -oP') && !l.includes("'") || l.includes('grep -E') && l.split("'").length % 2 === 0;
       if (codeBlockMatch) {
         // Take the first non-empty, valid shell command line from the code block
         commandToRun = codeBlockMatch[1].split('\n').map(l => l.trim()).filter(isValidShellCommand)[0] || '';
         // Remove explanations/comments after # or (
         if (commandToRun.includes('#')) commandToRun = commandToRun.split('#')[0].trim();
         if (commandToRun.includes('(')) commandToRun = commandToRun.split('(')[0].trim();
+        // Check for incomplete regex and reject the command
+        if (hasIncompleteRegex(commandToRun)) {
+          commandToRun = '';
+        }
       } else {
         // Remove backticks and take the first non-empty, valid shell command line
         const lines = reply.replace(/`/g, '').split('\n').map(l => l.trim()).filter(isValidShellCommand);
@@ -427,6 +432,10 @@ program
         // Remove explanations/comments after # or (
         if (commandToRun.includes('#')) commandToRun = commandToRun.split('#')[0].trim();
         if (commandToRun.includes('(')) commandToRun = commandToRun.split('(')[0].trim();
+        // Check for incomplete regex and reject the command
+        if (hasIncompleteRegex(commandToRun)) {
+          commandToRun = '';
+        }
       }
       if (!commandToRun) {
         console.log(chalk.red('No valid shell command found in the AI response.'));
@@ -439,6 +448,18 @@ program
           if (backtickMatches) {
             fallbackLine = backtickMatches.map(s => s.replace(/`/g, '').trim()).find(l => FALLBACK_COMMANDS.some(cmd => l.startsWith(cmd + ' ')));
           }
+        }
+        // Fallback 3: Use specific network scanning commands if network/scan keywords detected
+        if (!fallbackLine && (userInstruction.toLowerCase().includes('network') || userInstruction.toLowerCase().includes('scan') || userInstruction.toLowerCase().includes('ip'))) {
+          const networkCommands = [
+            'nmap -sn 192.168.1.0/24',
+            'arp-scan --localnet',
+            'netdiscover -r 192.168.1.0/24',
+            'ip neigh show',
+            'arp -a'
+          ];
+          fallbackLine = networkCommands[0]; // Use the first reliable command
+          console.log(chalk.magenta('Using fallback network scan command'));
         }
         if (fallbackLine) {
           let fallbackCommand = fallbackLine;
