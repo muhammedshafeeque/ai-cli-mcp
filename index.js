@@ -378,6 +378,16 @@ program
       systemPrompt += '\n\nNETWORK SCANNING: For network scanning, use these simple commands:\n- nmap -sn 192.168.1.0/24 (ping scan)\n- arp-scan --localnet (ARP scan)\n- netdiscover -r 192.168.1.0/24 (network discovery)\n- ip neigh show (show ARP table)\n- arp -a (show ARP entries)\n\nIMPORTANT: DO NOT use complex regex patterns like grep -Eo or grep -oP. Use simple commands that work reliably.';
     }
     
+    // Add specific instructions for vulnerability scanning
+    if (userInstruction.toLowerCase().includes('vulnerability') || userInstruction.toLowerCase().includes('vuln')) {
+      systemPrompt += '\n\nVULNERABILITY SCANNING: For vulnerability scanning, use these commands:\n- nmap -sV -p [PORT] [IP] (version detection)\n- nmap --script vuln [IP] (vulnerability scripts)\n- nikto -h [IP] (web vulnerability scanner)\n- sqlmap -u [URL] (SQL injection)\n- dirb [URL] (directory brute force)\n\nUse specific IP addresses and ports. Avoid overly specific grep patterns.';
+    }
+    
+    // Add specific instructions for port scanning
+    if (userInstruction.toLowerCase().includes('port') || userInstruction.toLowerCase().includes('ports')) {
+      systemPrompt += '\n\nPORT SCANNING: For port scanning, use these commands:\n- nmap -p [PORT] [IP] (specific port)\n- nmap -p1-1000 [IP] (port range)\n- nmap -sS [IP] (SYN scan)\n- nmap -sV [IP] (version detection)\n\nUse specific IP addresses. Separate multiple commands with semicolons, not &&.';
+    }
+    
     // Add format instructions
     if (userIntent.format !== 'default') {
       systemPrompt += `\n\nIMPORTANT: Format the output as ${userIntent.format.toUpperCase()}. Use appropriate tools like jq for JSON, column for tables, or sed/awk for clean formatting.`;
@@ -461,6 +471,27 @@ program
           fallbackLine = networkCommands[0]; // Use the first reliable command
           console.log(chalk.magenta('Using fallback network scan command'));
         }
+        // Fallback 4: Use specific vulnerability scanning commands
+        if (!fallbackLine && (userInstruction.toLowerCase().includes('vulnerability') || userInstruction.toLowerCase().includes('vuln'))) {
+          const vulnCommands = [
+            'nmap -sV 192.168.1.1',
+            'nmap --script vuln 192.168.1.1',
+            'nikto -h 192.168.1.1',
+            'dirb http://192.168.1.1'
+          ];
+          fallbackLine = vulnCommands[0]; // Use the first reliable command
+          console.log(chalk.magenta('Using fallback vulnerability scan command'));
+        }
+        // Fallback 5: Use specific port scanning commands
+        if (!fallbackLine && (userInstruction.toLowerCase().includes('port') || userInstruction.toLowerCase().includes('ports'))) {
+          const portCommands = [
+            'nmap -p 21,22,23,25,53,80,110,143,443,993,995 192.168.1.1',
+            'nmap -p1-1000 192.168.1.1',
+            'nmap -sS 192.168.1.1'
+          ];
+          fallbackLine = portCommands[0]; // Use the first reliable command
+          console.log(chalk.magenta('Using fallback port scan command'));
+        }
         if (fallbackLine) {
           let fallbackCommand = fallbackLine;
           if (fallbackCommand.includes('#')) fallbackCommand = fallbackCommand.split('#')[0].trim();
@@ -499,37 +530,71 @@ program
           
           // Check if output looks like a list and format as table
           const lines = stdout.trim().split('\n').filter(line => line.trim());
-          if (lines.length > 1 && (userInstruction.toLowerCase().includes('network') || userInstruction.toLowerCase().includes('scan') || userInstruction.toLowerCase().includes('list'))) {
+          if (lines.length > 1 && (userInstruction.toLowerCase().includes('network') || userInstruction.toLowerCase().includes('scan') || userInstruction.toLowerCase().includes('list') || userInstruction.toLowerCase().includes('port'))) {
             console.log(chalk.cyan('Command output:'));
-            // Try to format as table if it looks like structured data
-            if (lines[0].includes(' ') && lines.length > 2) {
-              try {
-                const tableData = lines.map((line, index) => {
-                  const parts = line.trim().split(/\s+/);
-                  if (index === 0) {
-                    // Header row
-                    return parts.reduce((obj, part, i) => {
-                      obj[`col${i}`] = part;
-                      return obj;
-                    }, {});
-                  } else {
-                    // Data row
-                    return parts.reduce((obj, part, i) => {
-                      obj[`col${i}`] = part;
-                      return obj;
-                    }, {});
+            // Check if this looks like port scan output
+            const isPortScanOutput = lines.some(line => line.includes('PORT') && line.includes('STATE') && line.includes('SERVICE')) || 
+                                    lines.some(line => line.includes('open') && line.includes('tcp')) ||
+                                    lines.some(line => line.includes('Nmap scan report'));
+            
+            if (isPortScanOutput) {
+              console.log(chalk.green('🔍 Port Scan Results:'));
+              // Find the table header and data
+              const headerIndex = lines.findIndex(line => line.includes('PORT') && line.includes('STATE'));
+              if (headerIndex !== -1) {
+                const header = lines[headerIndex];
+                const dataLines = lines.slice(headerIndex + 1).filter(line => line.includes('/tcp') || line.includes('/udp'));
+                
+                if (dataLines.length > 0) {
+                  console.log(chalk.yellow('📊 Open Ports:'));
+                  dataLines.forEach((line, index) => {
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 3) {
+                      console.log(chalk.green(`${index + 1}. Port ${parts[0]} (${parts[2]}) - ${parts[1]}`));
+                    }
+                  });
+                } else {
+                  console.log(chalk.yellow('No open ports found'));
+                }
+              } else {
+                // Fallback to simple list
+                lines.forEach((line, index) => {
+                  if (line.includes('open') || line.includes('filtered')) {
+                    console.log(chalk.green(`${index + 1}. ${line.trim()}`));
                   }
                 });
-                console.table(tableData);
-              } catch (e) {
-                console.log(chalk.green(formattedOutput));
               }
             } else {
-              // Simple list format
-              console.log(chalk.green('📋 Results:'));
-              lines.forEach((line, index) => {
-                console.log(chalk.green(`${index + 1}. ${line.trim()}`));
-              });
+              // Try to format as table if it looks like structured data
+              if (lines[0].includes(' ') && lines.length > 2) {
+                try {
+                  const tableData = lines.map((line, index) => {
+                    const parts = line.trim().split(/\s+/);
+                    if (index === 0) {
+                      // Header row
+                      return parts.reduce((obj, part, i) => {
+                        obj[`col${i}`] = part;
+                        return obj;
+                      }, {});
+                    } else {
+                      // Data row
+                      return parts.reduce((obj, part, i) => {
+                        obj[`col${i}`] = part;
+                        return obj;
+                      }, {});
+                    }
+                  });
+                  console.table(tableData);
+                } catch (e) {
+                  console.log(chalk.green(formattedOutput));
+                }
+              } else {
+                // Simple list format
+                console.log(chalk.green('📋 Results:'));
+                lines.forEach((line, index) => {
+                  console.log(chalk.green(`${index + 1}. ${line.trim()}`));
+                });
+              }
             }
           } else {
             console.log(chalk.cyan('Command output:'), chalk.green(formattedOutput));
